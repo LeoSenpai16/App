@@ -1,11 +1,15 @@
 const express = require("express");
 const pool = require("../db");
+const {
+    verificarToken,
+    permitirRoles
+} = require("../middleware/auth.middleware");
 
 const router = express.Router();
 
 
 // Reporte de ventas del día
-router.get("/hoy", async (req, res) => {
+router.get("/hoy",verificarToken,permitirRoles("chef"),async (req, res) => {
     try {
 
         // 1. Ventas totales

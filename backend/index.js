@@ -5,6 +5,7 @@ const mesasRoutes = require("./routes/mesas.routes");
 const cuentasRoutes = require("./routes/cuentas.routes");
 const ordenesRoutes = require("./routes/ordenes.routes");
 const reportesRoutes = require("./routes/reportes.routes");
+const authRoutes = require("./routes/auth.routes");
 
 const app = express();
 const PORT = 3000;
@@ -24,6 +25,7 @@ app.use("/api/mesas", mesasRoutes);
 app.use("/api/cuentas", cuentasRoutes);
 app.use("/api/ordenes", ordenesRoutes);
 app.use("/api/reportes", reportesRoutes);
+app.use("/api/auth", authRoutes);
 
 app.listen(PORT, () => {
     console.log(
