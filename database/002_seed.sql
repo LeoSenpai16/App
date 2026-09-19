@@ -1,8 +1,9 @@
+-- roles disponibles en el restaurante
 INSERT INTO roles (nombre)
 VALUES
 ('chef'),
 ('mesero');
-
+-- mesas disponibles en el restaurante
 INSERT INTO mesas (numero)
 VALUES
 (1),
@@ -12,6 +13,7 @@ VALUES
 (5),
 (6);
 
+-- Productos disponibles en el restaurante
 INSERT INTO productos (nombre, precio)
 VALUES
 ('Orden de asada', 130.00),
@@ -28,6 +30,7 @@ VALUES
 ('Refresco', 30.00),
 ('Agua de chía', 20.00);
 
+-- Modificadores disponibles de los productos 
 INSERT INTO modificadores (nombre)
 VALUES
 ('Sin frijol'),
@@ -42,3 +45,14 @@ VALUES
 ('Sin lechuga'),
 ('Sin jitomate'),
 ('Sin pepinillo');
+
+-- Modificadores disponibles para Taco de asada
+INSERT INTO producto_modificadores (
+    producto_id,
+    modificador_id
+)
+VALUES
+(3, 1),
+(3, 2),
+(3, 3),
+(3, 4);
