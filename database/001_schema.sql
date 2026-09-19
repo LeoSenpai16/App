@@ -200,3 +200,34 @@ CREATE TABLE orden_item_modificadores (
     CONSTRAINT chk_orden_item_modificadores_precio
         CHECK (precio_extra >= 0)
 );
+
+CREATE TABLE ventas (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    cuenta_id INTEGER NOT NULL UNIQUE,
+    total NUMERIC(10,2) NOT NULL,
+    metodo_pago VARCHAR(30) NOT NULL,
+    registrado_por INTEGER NOT NULL,
+
+    fecha_venta TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_ventas_cuenta
+        FOREIGN KEY (cuenta_id)
+        REFERENCES cuentas(id),
+
+    CONSTRAINT fk_ventas_usuario
+        FOREIGN KEY (registrado_por)
+        REFERENCES usuarios(id),
+
+    CONSTRAINT chk_ventas_total
+        CHECK (total >= 0),
+
+    CONSTRAINT chk_ventas_metodo_pago
+        CHECK (
+            metodo_pago IN (
+                'EFECTIVO',
+                'TARJETA',
+                'TRANSFERENCIA'
+            )
+        )
+);
