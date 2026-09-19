@@ -464,5 +464,97 @@ router.post("/:id/cobrar", async (req, res) => {
     }
 });
 
+// Crear cuenta para pedido por llamada / para llevar
+router.post("/para-llevar", async (req, res) => {
+    const {
+        nombre_cliente,
+        mesero_id
+    } = req.body;
+
+    if (
+        typeof nombre_cliente !== "string" ||
+        nombre_cliente.trim().length === 0
+    ) {
+        return res.status(400).json({
+            mensaje: "El nombre del cliente es obligatorio"
+        });
+    }
+
+    if (
+        !Number.isInteger(mesero_id) ||
+        mesero_id <= 0
+    ) {
+        return res.status(400).json({
+            mensaje: "mesero_id inválido"
+        });
+    }
+
+    try {
+        // Comprobar que el usuario exista y esté activo
+        const usuarioResultado = await pool.query(
+            `
+            SELECT
+                id,
+                nombre
+            FROM usuarios
+            WHERE id = $1
+            AND activo = TRUE
+            `,
+            [mesero_id]
+        );
+
+        if (usuarioResultado.rows.length === 0) {
+            return res.status(404).json({
+                mensaje: "El mesero no existe o está inactivo"
+            });
+        }
+
+        const resultado = await pool.query(
+            `
+            INSERT INTO cuentas (
+                tipo,
+                mesa_id,
+                mesero_id,
+                nombre_cliente
+            )
+            VALUES (
+                'PARA_LLEVAR',
+                NULL,
+                $1,
+                $2
+            )
+
+            RETURNING
+                id,
+                tipo,
+                mesa_id,
+                mesero_id,
+                nombre_cliente,
+                estado,
+                fecha_apertura
+            `,
+            [
+                mesero_id,
+                nombre_cliente.trim()
+            ]
+        );
+
+        res.status(201).json({
+            mensaje: "Pedido para llevar abierto correctamente",
+            cuenta: resultado.rows[0]
+        });
+
+    } catch (error) {
+        console.error(
+            "Error al crear pedido para llevar:",
+            error
+        );
+
+        res.status(500).json({
+            mensaje: "Error interno del servidor"
+        });
+    }
+});
+
 
 module.exports = router;
