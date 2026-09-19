@@ -1,0 +1,39 @@
+CREATE TABLE roles (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nombre VARCHAR(50) NOT NULL UNIQUE
+);
+
+CREATE TABLE usuarios (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    pin VARCHAR(255) NOT NULL,
+    rol_id INTEGER NOT NULL,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+
+    CONSTRAINT fk_usuarios_roles
+        FOREIGN KEY (rol_id)
+        REFERENCES roles(id)
+);
+
+CREATE TABLE mesas (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    numero INTEGER NOT NULL UNIQUE,
+    estado VARCHAR(30) NOT NULL DEFAULT 'LIBRE',
+
+    CONSTRAINT chk_mesas_estado
+        CHECK (estado IN (
+            'LIBRE',
+            'OCUPADA',
+            'PENDIENTE_PAGO'
+        ))
+);
+
+CREATE TABLE productos (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL UNIQUE,
+    precio NUMERIC(10,2) NOT NULL,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+
+    CONSTRAINT chk_productos_precio
+        CHECK (precio >= 0)
+);
