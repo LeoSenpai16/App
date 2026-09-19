@@ -27,3 +27,18 @@ VALUES
 ('Plato de frijol', 15.00),
 ('Refresco', 30.00),
 ('Agua de chía', 20.00);
+
+INSERT INTO modificadores (nombre)
+VALUES
+('Sin frijol'),
+('Sin nopal'),
+('Aparte'),
+('Sin queso blanco'),
+('Sin aderezos'),
+('Sin ketchup'),
+('Sin mostaza'),
+('Sin chimichurri'),
+('Sin cebolla'),
+('Sin lechuga'),
+('Sin jitomate'),
+('Sin pepinillo');
