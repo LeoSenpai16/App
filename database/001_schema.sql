@@ -21,11 +21,13 @@ CREATE TABLE mesas (
     estado VARCHAR(30) NOT NULL DEFAULT 'LIBRE',
 
     CONSTRAINT chk_mesas_estado
-        CHECK (estado IN (
-            'LIBRE',
-            'OCUPADA',
-            'PENDIENTE_PAGO'
-        ))
+        CHECK (
+            estado IN (
+                'LIBRE',
+                'OCUPADA',
+                'PENDIENTE_PAGO'
+            )
+        )
 );
 
 CREATE TABLE productos (
@@ -60,15 +62,22 @@ CREATE TABLE cuentas (
         REFERENCES usuarios(id),
 
     CONSTRAINT chk_cuentas_tipo
-        CHECK (tipo IN ('MESA', 'PARA_LLEVAR')),
+        CHECK (
+            tipo IN (
+                'MESA',
+                'PARA_LLEVAR'
+            )
+        ),
 
     CONSTRAINT chk_cuentas_estado
-        CHECK (estado IN (
-            'ABIERTA',
-            'PENDIENTE_PAGO',
-            'CERRADA',
-            'CANCELADA'
-        )),
+        CHECK (
+            estado IN (
+                'ABIERTA',
+                'PENDIENTE_PAGO',
+                'CERRADA',
+                'CANCELADA'
+            )
+        ),
 
     CONSTRAINT chk_cuentas_tipo_datos
         CHECK (
@@ -84,9 +93,11 @@ CREATE TABLE cuentas (
 
 CREATE TABLE ordenes (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
     cuenta_id INTEGER NOT NULL,
     creado_por INTEGER NOT NULL,
 
+    tipo_entrega VARCHAR(20) NOT NULL,
     estado VARCHAR(30) NOT NULL DEFAULT 'PENDIENTE',
 
     fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -100,14 +111,24 @@ CREATE TABLE ordenes (
         FOREIGN KEY (creado_por)
         REFERENCES usuarios(id),
 
+    CONSTRAINT chk_ordenes_tipo_entrega
+        CHECK (
+            tipo_entrega IN (
+                'EN_MESA',
+                'PARA_LLEVAR'
+            )
+        ),
+
     CONSTRAINT chk_ordenes_estado
-        CHECK (estado IN (
-            'PENDIENTE',
-            'PREPARANDO',
-            'LISTO',
-            'ENTREGADO',
-            'CANCELADO'
-        ))
+        CHECK (
+            estado IN (
+                'PENDIENTE',
+                'PREPARANDO',
+                'LISTO',
+                'ENTREGADO',
+                'CANCELADO'
+            )
+        )
 );
 
 CREATE TABLE orden_items (
@@ -160,7 +181,6 @@ CREATE TABLE producto_modificadores (
     CONSTRAINT chk_producto_modificadores_precio
         CHECK (precio_extra >= 0)
 );
-
 
 CREATE TABLE orden_item_modificadores (
     orden_item_id INTEGER NOT NULL,
