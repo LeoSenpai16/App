@@ -1,29 +1,33 @@
 const express = require("express");
 const pool = require("../db");
 
+const {
+    verificarToken,
+    permitirRoles
+} = require("../middleware/auth.middleware");
+
 const router = express.Router();
 
 
 // Crear orden
-router.post("/", async (req, res) => {
+router.post("/", verificarToken, permitirRoles("mesero"), async (req, res) => {
     const {
         cuenta_id,
-        creado_por,
         tipo_entrega,
         items
     } = req.body;
 
+        const creado_por = req.usuario.id;
+
     if (
         !cuenta_id ||
-        !creado_por ||
         !tipo_entrega
     ) {
         return res.status(400).json({
             mensaje:
-                "cuenta_id, creado_por y tipo_entrega son obligatorios"
+                "cuenta_id y tipo_entrega son obligatorios"
         });
     }
-
     if (
         ![
             "EN_MESA",

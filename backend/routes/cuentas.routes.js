@@ -1,6 +1,11 @@
 const express = require("express");
 const pool = require("../db");
 
+const {
+    verificarToken,
+    permitirRoles
+} = require("../middleware/auth.middleware");
+
 const router = express.Router();
 
 
@@ -51,123 +56,137 @@ router.get("/abiertas", async (req, res) => {
     }
 });
 
-
 // Abrir una mesa
-router.post("/mesa", async (req, res) => {
-    const {
-        mesa_id,
-        mesero_id
-    } = req.body;
+router.post(
+    "/mesa",
+    verificarToken,
+    permitirRoles("mesero"),
+    async (req, res) => {
 
-    if (!mesa_id || !mesero_id) {
-        return res.status(400).json({
-            mensaje:
-                "mesa_id y mesero_id son obligatorios"
-        });
-    }
+        const mesaId = Number(req.body.mesa_id);
 
-    const cliente = await pool.connect();
+        // El mesero ya NO viene del teléfono.
+        // Se obtiene del JWT verificado.
+        const meseroId = req.usuario.id;
 
-    try {
-        await cliente.query("BEGIN");
-
-        const mesaResultado = await cliente.query(
-            `
-            SELECT
-                id,
-                numero,
-                estado
-            FROM mesas
-            WHERE id = $1
-            FOR UPDATE
-            `,
-            [mesa_id]
-        );
-
-        if (mesaResultado.rows.length === 0) {
-            await cliente.query("ROLLBACK");
-
-            return res.status(404).json({
-                mensaje: "La mesa no existe"
+        if (
+            !Number.isInteger(mesaId) ||
+            mesaId <= 0
+        ) {
+            return res.status(400).json({
+                mensaje: "mesa_id inválido"
             });
         }
 
-        const mesa = mesaResultado.rows[0];
+        const cliente = await pool.connect();
 
-        if (mesa.estado !== "LIBRE") {
-            await cliente.query("ROLLBACK");
+        try {
+            await cliente.query("BEGIN");
 
-            return res.status(409).json({
+            const mesaResultado = await cliente.query(
+                `
+                SELECT
+                    id,
+                    numero,
+                    estado
+                FROM mesas
+                WHERE id = $1
+                FOR UPDATE
+                `,
+                [mesaId]
+            );
+
+            if (mesaResultado.rows.length === 0) {
+                await cliente.query("ROLLBACK");
+
+                return res.status(404).json({
+                    mensaje: "La mesa no existe"
+                });
+            }
+
+            const mesa = mesaResultado.rows[0];
+
+            if (mesa.estado !== "LIBRE") {
+                await cliente.query("ROLLBACK");
+
+                return res.status(409).json({
+                    mensaje:
+                        `La Mesa ${mesa.numero} no está libre`
+                });
+            }
+
+            const cuentaResultado = await cliente.query(
+                `
+                INSERT INTO cuentas (
+                    tipo,
+                    mesa_id,
+                    mesero_id
+                )
+                VALUES (
+                    'MESA',
+                    $1,
+                    $2
+                )
+                RETURNING *
+                `,
+                [
+                    mesaId,
+                    meseroId
+                ]
+            );
+
+            await cliente.query(
+                `
+                UPDATE mesas
+                SET estado = 'OCUPADA'
+                WHERE id = $1
+                `,
+                [mesaId]
+            );
+
+            await cliente.query("COMMIT");
+
+            res.status(201).json({
                 mensaje:
-                    `La Mesa ${mesa.numero} no está libre`
+                    `Mesa ${mesa.numero} abierta correctamente`,
+
+                cuenta:
+                    cuentaResultado.rows[0]
             });
+
+        } catch (error) {
+            await cliente.query("ROLLBACK");
+
+            console.error(
+                "Error al abrir mesa:",
+                error
+            );
+
+            res.status(500).json({
+                mensaje: "Error interno del servidor"
+            });
+
+        } finally {
+            cliente.release();
         }
-
-        const cuentaResultado = await cliente.query(
-            `
-            INSERT INTO cuentas (
-                tipo,
-                mesa_id,
-                mesero_id
-            )
-            VALUES (
-                'MESA',
-                $1,
-                $2
-            )
-            RETURNING *
-            `,
-            [
-                mesa_id,
-                mesero_id
-            ]
-        );
-
-        await cliente.query(
-            `
-            UPDATE mesas
-            SET estado = 'OCUPADA'
-            WHERE id = $1
-            `,
-            [mesa_id]
-        );
-
-        await cliente.query("COMMIT");
-
-        res.status(201).json({
-            mensaje:
-                `Mesa ${mesa.numero} abierta correctamente`,
-
-            cuenta:
-                cuentaResultado.rows[0]
-        });
-
-    } catch (error) {
-        await cliente.query("ROLLBACK");
-
-        console.error(
-            "Error al abrir mesa:",
-            error
-        );
-
-        res.status(500).json({
-            mensaje: "Error interno del servidor"
-        });
-
-    } finally {
-        cliente.release();
     }
-});
-
+);
 
 // Cobrar y cerrar cuenta
-router.post("/:id/cobrar", async (req, res) => {
-    const cuentaId = Number(req.params.id);
+router.post(
+    "/:id/cobrar",
+    verificarToken,
+    permitirRoles("mesero"),
+    async (req, res) => {
 
-    const {
-        metodo_pago,
-        registrado_por
-    } = req.body;
+        const cuentaId = Number(req.params.id);
+
+        const {
+            metodo_pago
+        } = req.body;
+
+        // El usuario que cobra se obtiene del JWT
+        const registrado_por = req.usuario.id;
 
     if (
         !Number.isInteger(cuentaId) ||
@@ -187,13 +206,6 @@ router.post("/:id/cobrar", async (req, res) => {
     if (!metodosPermitidos.includes(metodo_pago)) {
         return res.status(400).json({
             mensaje: "Método de pago inválido"
-        });
-    }
-
-    if (!registrado_por) {
-        return res.status(400).json({
-            mensaje:
-                "registrado_por es obligatorio"
         });
     }
 
@@ -463,98 +475,96 @@ router.post("/:id/cobrar", async (req, res) => {
         cliente.release();
     }
 });
-
 // Crear cuenta para pedido por llamada / para llevar
-router.post("/para-llevar", async (req, res) => {
-    const {
-        nombre_cliente,
-        mesero_id
-    } = req.body;
+router.post(
+    "/para-llevar",
+    verificarToken,
+    permitirRoles("mesero"),
+    async (req, res) => {
 
-    if (
-        typeof nombre_cliente !== "string" ||
-        nombre_cliente.trim().length === 0
-    ) {
-        return res.status(400).json({
-            mensaje: "El nombre del cliente es obligatorio"
-        });
-    }
+        const {
+            nombre_cliente
+        } = req.body;
 
-    if (
-        !Number.isInteger(mesero_id) ||
-        mesero_id <= 0
-    ) {
-        return res.status(400).json({
-            mensaje: "mesero_id inválido"
-        });
-    }
+        // El mesero se obtiene del JWT
+        const meseroId = req.usuario.id;
 
-    try {
-        // Comprobar que el usuario exista y esté activo
-        const usuarioResultado = await pool.query(
-            `
-            SELECT
-                id,
-                nombre
-            FROM usuarios
-            WHERE id = $1
-            AND activo = TRUE
-            `,
-            [mesero_id]
-        );
-
-        if (usuarioResultado.rows.length === 0) {
-            return res.status(404).json({
-                mensaje: "El mesero no existe o está inactivo"
+        if (
+            typeof nombre_cliente !== "string" ||
+            nombre_cliente.trim().length === 0
+        ) {
+            return res.status(400).json({
+                mensaje: "El nombre del cliente es obligatorio"
             });
         }
 
-        const resultado = await pool.query(
-            `
-            INSERT INTO cuentas (
-                tipo,
-                mesa_id,
-                mesero_id,
-                nombre_cliente
-            )
-            VALUES (
-                'PARA_LLEVAR',
-                NULL,
-                $1,
-                $2
-            )
+        try {
+            // Comprobar que el usuario siga existiendo y activo
+            const usuarioResultado = await pool.query(
+                `
+                SELECT
+                    id,
+                    nombre
+                FROM usuarios
+                WHERE id = $1
+                AND activo = TRUE
+                `,
+                [meseroId]
+            );
 
-            RETURNING
-                id,
-                tipo,
-                mesa_id,
-                mesero_id,
-                nombre_cliente,
-                estado,
-                fecha_apertura
-            `,
-            [
-                mesero_id,
-                nombre_cliente.trim()
-            ]
-        );
+            if (usuarioResultado.rows.length === 0) {
+                return res.status(401).json({
+                    mensaje: "Usuario no disponible"
+                });
+            }
 
-        res.status(201).json({
-            mensaje: "Pedido para llevar abierto correctamente",
-            cuenta: resultado.rows[0]
-        });
+            const resultado = await pool.query(
+                `
+                INSERT INTO cuentas (
+                    tipo,
+                    mesa_id,
+                    mesero_id,
+                    nombre_cliente
+                )
+                VALUES (
+                    'PARA_LLEVAR',
+                    NULL,
+                    $1,
+                    $2
+                )
 
-    } catch (error) {
-        console.error(
-            "Error al crear pedido para llevar:",
-            error
-        );
+                RETURNING
+                    id,
+                    tipo,
+                    mesa_id,
+                    mesero_id,
+                    nombre_cliente,
+                    estado,
+                    fecha_apertura
+                `,
+                [
+                    meseroId,
+                    nombre_cliente.trim()
+                ]
+            );
 
-        res.status(500).json({
-            mensaje: "Error interno del servidor"
-        });
+            res.status(201).json({
+                mensaje: "Pedido para llevar abierto correctamente",
+                cuenta: resultado.rows[0]
+            });
+
+        } catch (error) {
+            console.error(
+                "Error al crear pedido para llevar:",
+                error
+            );
+
+            res.status(500).json({
+                mensaje: "Error interno del servidor"
+            });
+        }
     }
-});
+);
 
 
 module.exports = router;
