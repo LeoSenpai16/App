@@ -28,6 +28,7 @@ router.post("/", verificarToken, permitirRoles("mesero"), async (req, res) => {
                 "cuenta_id y tipo_entrega son obligatorios"
         });
     }
+
     if (
         ![
             "EN_MESA",
@@ -610,12 +611,14 @@ router.get("/cocina", async (req, res) => {
 
 
 // Cambiar estado
+// Cambiar estado de una orden
 router.patch(
     "/:id/estado",
+    verificarToken,
+    permitirRoles("chef", "mesero"),
     async (req, res) => {
 
-        const ordenId =
-            Number(req.params.id);
+        const ordenId = Number(req.params.id);
 
         const {
             estado
@@ -626,131 +629,142 @@ router.patch(
             ordenId <= 0
         ) {
             return res.status(400).json({
-                mensaje:
-                    "ID de orden inválido"
+                mensaje: "ID de orden inválido"
             });
         }
 
         const estadosPermitidos = [
-            "PENDIENTE",
             "PREPARANDO",
             "LISTO",
             "ENTREGADO",
             "CANCELADO"
         ];
 
-        if (
-            !estadosPermitidos.includes(
-                estado
-            )
-        ) {
+        if (!estadosPermitidos.includes(estado)) {
             return res.status(400).json({
-                mensaje:
-                    "Estado de orden inválido"
+                mensaje: "Estado de orden inválido"
             });
         }
 
         try {
+            const ordenResultado = await pool.query(
+                `
+                SELECT
+                    id,
+                    estado
+                FROM ordenes
+                WHERE id = $1
+                `,
+                [ordenId]
+            );
 
-            const ordenResultado =
-                await pool.query(
-                    `
-                    SELECT
-                        id,
-                        estado
-
-                    FROM ordenes
-
-                    WHERE id = $1
-                    `,
-                    [ordenId]
-                );
-
-            if (
-                ordenResultado.rows.length
-                === 0
-            ) {
+            if (ordenResultado.rows.length === 0) {
                 return res.status(404).json({
-                    mensaje:
-                        "La orden no existe"
+                    mensaje: "La orden no existe"
                 });
             }
 
             const estadoActual =
-                ordenResultado.rows[0]
-                    .estado;
+                ordenResultado.rows[0].estado;
 
-            const transiciones = {
+            const rol = req.usuario.rol;
 
-                PENDIENTE: [
-                    "PREPARANDO",
-                    "CANCELADO"
-                ],
+            /*
+             * Reglas por rol:
+             *
+             * Chef:
+             * PENDIENTE  -> PREPARANDO
+             * PREPARANDO -> LISTO
+             * PENDIENTE  -> CANCELADO
+             * PREPARANDO -> CANCELADO
+             *
+             * Mesero:
+             * PENDIENTE -> CANCELADO
+             * LISTO     -> ENTREGADO
+             */
 
-                PREPARANDO: [
-                    "LISTO",
-                    "CANCELADO"
-                ],
+            const transicionesPorRol = {
+                chef: {
+                    PENDIENTE: [
+                        "PREPARANDO",
+                        "CANCELADO"
+                    ],
 
-                LISTO: [
-                    "ENTREGADO"
-                ],
+                    PREPARANDO: [
+                        "LISTO",
+                        "CANCELADO"
+                    ],
 
-                ENTREGADO: [],
+                    LISTO: [],
 
-                CANCELADO: []
+                    ENTREGADO: [],
+
+                    CANCELADO: []
+                },
+
+                mesero: {
+                    PENDIENTE: [
+                        "CANCELADO"
+                    ],
+
+                    PREPARANDO: [],
+
+                    LISTO: [
+                        "ENTREGADO"
+                    ],
+
+                    ENTREGADO: [],
+
+                    CANCELADO: []
+                }
             };
 
+            const transicionesDisponibles =
+                transicionesPorRol[rol]?.[estadoActual] || [];
+
             if (
-                !transiciones[
-                    estadoActual
-                ].includes(estado)
+                !transicionesDisponibles.includes(
+                    estado
+                )
             ) {
-                return res
-                    .status(409)
-                    .json({
-                        mensaje:
-                            `No se puede cambiar una orden de ${estadoActual} a ${estado}`
-                    });
+                return res.status(403).json({
+                    mensaje:
+                        `El rol ${rol} no puede cambiar una orden de ${estadoActual} a ${estado}`
+                });
             }
 
-            const resultado =
-                await pool.query(
-                    `
-                    UPDATE ordenes
+            const resultado = await pool.query(
+                `
+                UPDATE ordenes
 
-                    SET
-                        estado =
-                            $1::VARCHAR(30),
+                SET
+                    estado = $1::VARCHAR(30),
 
-                        fecha_listo =
-                            CASE
-                                WHEN
-                                    $1::VARCHAR(30)
-                                    = 'LISTO'
+                    fecha_listo =
+                        CASE
+                            WHEN
+                                $1::VARCHAR(30) = 'LISTO'
+                            THEN
+                                CURRENT_TIMESTAMP
+                            ELSE
+                                fecha_listo
+                        END
 
-                                THEN
-                                    CURRENT_TIMESTAMP
+                WHERE id = $2
 
-                                ELSE
-                                    fecha_listo
-                            END
-
-                    WHERE id = $2
-
-                    RETURNING
-                        id,
-                        cuenta_id,
-                        tipo_entrega,
-                        estado,
-                        fecha_creacion,
-                        fecha_listo
-                    `,
-                    [
-                        estado,
-                        ordenId
-                    ]
-                );
+                RETURNING
+                    id,
+                    cuenta_id,
+                    tipo_entrega,
+                    estado,
+                    fecha_creacion,
+                    fecha_listo
+                `,
+                [
+                    estado,
+                    ordenId
+                ]
+            );
 
             res.json({
                 mensaje:
