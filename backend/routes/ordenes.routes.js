@@ -435,7 +435,7 @@ router.post("/", verificarToken, permitirRoles("mesero"), async (req, res) => {
 
 
 // Obtener órdenes de cocina
-router.get("/cocina", async (req, res) => {
+router.get( "/cocina",verificarToken, permitirRoles("chef"), async (req, res) => {
     try {
         const resultado = await pool.query(`
             SELECT
