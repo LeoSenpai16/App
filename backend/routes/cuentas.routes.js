@@ -566,5 +566,344 @@ router.post(
     }
 );
 
+// Obtener detalle completo de una cuenta
+router.get(
+    "/:id/detalle",
+    verificarToken,
+    permitirRoles("mesero", "chef"),
+    async (req, res) => {
+
+        const cuentaId = Number(req.params.id);
+
+        if (
+            !Number.isInteger(cuentaId) ||
+            cuentaId <= 0
+        ) {
+            return res.status(400).json({
+                mensaje: "ID de cuenta inválido"
+            });
+        }
+
+        try {
+
+            // ==================================================
+            // 1. Obtener información general de la cuenta
+            // ==================================================
+
+            const cuentaResultado = await pool.query(
+                `
+                SELECT
+                    c.id,
+                    c.tipo,
+                    c.estado,
+                    c.nombre_cliente,
+                    c.mesero_id,
+                    c.fecha_apertura,
+                    c.fecha_cierre,
+
+                    m.numero AS mesa,
+
+                    u.nombre AS mesero
+
+                FROM cuentas c
+
+                LEFT JOIN mesas m
+                    ON c.mesa_id = m.id
+
+                JOIN usuarios u
+                    ON c.mesero_id = u.id
+
+                WHERE c.id = $1
+                `,
+                [cuentaId]
+            );
+
+            if (cuentaResultado.rows.length === 0) {
+                return res.status(404).json({
+                    mensaje: "La cuenta no existe"
+                });
+            }
+
+            const cuenta = cuentaResultado.rows[0];
+
+
+            // ==================================================
+            // 2. Seguridad:
+            // Un mesero solamente puede consultar sus cuentas.
+            // El chef puede consultar cualquier cuenta.
+            // ==================================================
+
+            if (
+                req.usuario.rol === "mesero" &&
+                cuenta.mesero_id !== req.usuario.id
+            ) {
+                return res.status(403).json({
+                    mensaje:
+                        "No tienes permiso para consultar esta cuenta"
+                });
+            }
+
+
+            // ==================================================
+            // 3. Obtener órdenes e items
+            // ==================================================
+
+            const ordenesResultado = await pool.query(
+                `
+                SELECT
+                    o.id AS orden_id,
+                    o.estado AS orden_estado,
+                    o.tipo_entrega,
+                    o.fecha_creacion,
+                    o.fecha_listo,
+
+                    oi.id AS item_id,
+                    oi.cantidad,
+                    oi.precio_unitario,
+                    oi.nota_especial,
+
+                    p.id AS producto_id,
+                    p.nombre AS producto,
+
+                    COALESCE(
+                        (
+                            SELECT json_agg(
+                                json_build_object(
+                                    'id',
+                                    mod.id,
+
+                                    'nombre',
+                                    mod.nombre,
+
+                                    'precio_extra',
+                                    oim.precio_extra
+                                )
+                                ORDER BY mod.id
+                            )
+
+                            FROM orden_item_modificadores oim
+
+                            JOIN modificadores mod
+                                ON oim.modificador_id = mod.id
+
+                            WHERE oim.orden_item_id = oi.id
+                        ),
+                        '[]'::json
+                    ) AS modificadores,
+
+                    (
+                        oi.cantidad
+                        *
+                        (
+                            oi.precio_unitario
+                            +
+                            COALESCE(
+                                (
+                                    SELECT SUM(
+                                        oim2.precio_extra
+                                    )
+
+                                    FROM orden_item_modificadores oim2
+
+                                    WHERE
+                                        oim2.orden_item_id = oi.id
+                                ),
+                                0
+                            )
+                        )
+                    )::NUMERIC(10,2) AS subtotal
+
+                FROM ordenes o
+
+                JOIN orden_items oi
+                    ON o.id = oi.orden_id
+
+                JOIN productos p
+                    ON oi.producto_id = p.id
+
+                WHERE o.cuenta_id = $1
+
+                AND o.estado <> 'CANCELADO'
+
+                ORDER BY
+                    o.fecha_creacion ASC,
+                    oi.id ASC
+                `,
+                [cuentaId]
+            );
+
+
+            // ==================================================
+            // 4. Calcular total desde PostgreSQL
+            // ==================================================
+
+            const totalResultado = await pool.query(
+                `
+                SELECT
+
+                    COALESCE(
+                        SUM(
+                            oi.cantidad
+                            *
+                            (
+                                oi.precio_unitario
+                                +
+                                COALESCE(
+                                    (
+                                        SELECT SUM(
+                                            oim.precio_extra
+                                        )
+
+                                        FROM
+                                            orden_item_modificadores oim
+
+                                        WHERE
+                                            oim.orden_item_id = oi.id
+                                    ),
+                                    0
+                                )
+                            )
+                        ),
+                        0
+                    )::NUMERIC(10,2) AS total
+
+                FROM ordenes o
+
+                JOIN orden_items oi
+                    ON o.id = oi.orden_id
+
+                WHERE o.cuenta_id = $1
+
+                AND o.estado <> 'CANCELADO'
+                `,
+                [cuentaId]
+            );
+
+
+            // ==================================================
+            // 5. Agrupar items dentro de cada orden
+            // ==================================================
+
+            const ordenesMap = new Map();
+
+            for (const fila of ordenesResultado.rows) {
+
+                if (!ordenesMap.has(fila.orden_id)) {
+
+                    ordenesMap.set(
+                        fila.orden_id,
+                        {
+                            id: fila.orden_id,
+
+                            estado:
+                                fila.orden_estado,
+
+                            tipo_entrega:
+                                fila.tipo_entrega,
+
+                            fecha_creacion:
+                                fila.fecha_creacion,
+
+                            fecha_listo:
+                                fila.fecha_listo,
+
+                            items: []
+                        }
+                    );
+                }
+
+
+                ordenesMap
+                    .get(fila.orden_id)
+                    .items
+                    .push({
+                        id:
+                            fila.item_id,
+
+                        producto_id:
+                            fila.producto_id,
+
+                        producto:
+                            fila.producto,
+
+                        cantidad:
+                            fila.cantidad,
+
+                        precio_unitario:
+                            fila.precio_unitario,
+
+                        nota_especial:
+                            fila.nota_especial,
+
+                        modificadores:
+                            fila.modificadores,
+
+                        subtotal:
+                            fila.subtotal
+                    });
+            }
+
+
+            const ordenes =
+                Array.from(
+                    ordenesMap.values()
+                );
+
+
+            // ==================================================
+            // 6. Respuesta
+            // ==================================================
+
+            res.json({
+                id:
+                    cuenta.id,
+
+                tipo:
+                    cuenta.tipo,
+
+                estado:
+                    cuenta.estado,
+
+                mesa:
+                    cuenta.mesa,
+
+                nombre_cliente:
+                    cuenta.nombre_cliente,
+
+                mesero: {
+                    id:
+                        cuenta.mesero_id,
+
+                    nombre:
+                        cuenta.mesero
+                },
+
+                fecha_apertura:
+                    cuenta.fecha_apertura,
+
+                fecha_cierre:
+                    cuenta.fecha_cierre,
+
+                ordenes,
+
+                total:
+                    totalResultado.rows[0].total
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Error al obtener detalle de cuenta:",
+                error
+            );
+
+            res.status(500).json({
+                mensaje:
+                    "Error interno del servidor"
+            });
+        }
+    }
+);
+
 
 module.exports = router;
