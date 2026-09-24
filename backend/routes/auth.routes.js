@@ -7,10 +7,44 @@ const pool = require("../db");
 const router = express.Router();
 
 
-// ============================================================
-// LOGIN
-// ============================================================
+// Obtener usuarios activos disponibles para iniciar sesión
+router.get("/usuarios", async (req, res) => {
+    try {
+        const resultado = await pool.query(
+            `
+            SELECT
+                u.id,
+                u.nombre,
+                r.nombre AS rol
 
+            FROM usuarios u
+
+            JOIN roles r
+                ON u.rol_id = r.id
+
+            WHERE u.activo = TRUE
+
+            ORDER BY
+                r.nombre,
+                u.nombre
+            `
+        );
+
+        res.json(resultado.rows);
+
+    } catch (error) {
+        console.error(
+            "Error al obtener usuarios:",
+            error
+        );
+
+        res.status(500).json({
+            mensaje: "Error interno del servidor"
+        });
+    }
+});
+
+// LOGIN
 router.post("/login", async (req, res) => {
     const {
         usuario_id,
