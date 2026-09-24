@@ -1,12 +1,7 @@
-import {
-    useEffect,
-    useMemo,
-    useState
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
     ActivityIndicator,
-    Modal,
     Pressable,
     SafeAreaView,
     ScrollView,
@@ -36,21 +31,9 @@ type Producto = {
 };
 
 
-type Modificador = {
-    id: number;
-    nombre: string;
-    precio_extra: string;
-};
-
-
-type LineaPedido = {
-    idTemporal: string;
-
+type SeleccionProducto = {
     producto: Producto;
-
     cantidad: number;
-
-    modificadores: Modificador[];
 };
 
 
@@ -66,7 +49,6 @@ export default function NuevoPedidoScreen() {
         tipoCuenta?: string;
     }>();
 
-
     const {
         usuario,
         token
@@ -76,26 +58,11 @@ export default function NuevoPedidoScreen() {
     const [productos, setProductos] =
         useState<Producto[]>([]);
 
-    const [lineas, setLineas] =
-        useState<LineaPedido[]>([]);
-
-    const [productoConfigurando, setProductoConfigurando] =
-        useState<Producto | null>(null);
-
-    const [modificadoresDisponibles, setModificadoresDisponibles] =
-        useState<Modificador[]>([]);
-
-    const [modificadoresSeleccionados, setModificadoresSeleccionados] =
-        useState<number[]>([]);
-
-    const [cantidadConfigurando, setCantidadConfigurando] =
-        useState(1);
+    const [seleccion, setSeleccion] =
+        useState<Record<number, number>>({});
 
     const [cargando, setCargando] =
         useState(true);
-
-    const [cargandoModificadores, setCargandoModificadores] =
-        useState(false);
 
     const [enviando, setEnviando] =
         useState(false);
@@ -104,9 +71,9 @@ export default function NuevoPedidoScreen() {
         useState("");
 
 
-    // =========================================================
+    // ==========================================
     // PROTEGER PANTALLA
-    // =========================================================
+    // ==========================================
 
     useEffect(() => {
 
@@ -125,9 +92,9 @@ export default function NuevoPedidoScreen() {
     ]);
 
 
-    // =========================================================
+    // ==========================================
     // CARGAR PRODUCTOS
-    // =========================================================
+    // ==========================================
 
     useEffect(() => {
 
@@ -197,251 +164,98 @@ export default function NuevoPedidoScreen() {
     }
 
 
-    // =========================================================
-    // SELECCIONAR PRODUCTO
-    // =========================================================
+    // ==========================================
+    // CANTIDADES
+    // ==========================================
 
-    async function seleccionarProducto(
-        producto: Producto
-    ) {
+    function aumentar(productoId: number) {
 
-        if (!token) {
-            return;
-        }
+        setSeleccion((actual) => ({
+            ...actual,
 
-        try {
-
-            setProductoConfigurando(producto);
-
-            setCantidadConfigurando(1);
-
-            setModificadoresSeleccionados([]);
-
-            setModificadoresDisponibles([]);
-
-            setCargandoModificadores(true);
-
-            setMensaje("");
+            [productoId]:
+                (actual[productoId] || 0) + 1
+        }));
+    }
 
 
-            const respuesta = await fetch(
-                `${API_URL}/api/productos/${producto.id}/modificadores`,
-                {
-                    headers: {
-                        Authorization:
-                            `Bearer ${token}`
-                    }
-                }
-            );
+    function disminuir(productoId: number) {
 
-            const datos =
-                await respuesta.json();
+        setSeleccion((actual) => {
 
+            const cantidadActual =
+                actual[productoId] || 0;
 
-            if (!respuesta.ok) {
-
-                setProductoConfigurando(null);
-
-                setMensaje(
-                    datos.mensaje ||
-                    "No fue posible obtener los modificadores."
+            const nuevaCantidad =
+                Math.max(
+                    cantidadActual - 1,
+                    0
                 );
 
-                return;
-            }
-
-
-            setModificadoresDisponibles(
-                datos.modificadores
-            );
-
-
-        } catch (error) {
-
-            console.error(error);
-
-            setProductoConfigurando(null);
-
-            setMensaje(
-                "No se pudo conectar con el servidor."
-            );
-
-        } finally {
-
-            setCargandoModificadores(false);
-        }
+            return {
+                ...actual,
+                [productoId]:
+                    nuevaCantidad
+            };
+        });
     }
 
 
-    // =========================================================
-    // MODIFICADORES
-    // =========================================================
-
-    function alternarModificador(
-        modificadorId: number
-    ) {
-
-        setModificadoresSeleccionados(
-            (actuales) => {
-
-                if (
-                    actuales.includes(
-                        modificadorId
-                    )
-                ) {
-                    return actuales.filter(
-                        (id) =>
-                            id !== modificadorId
-                    );
-                }
-
-                return [
-                    ...actuales,
-                    modificadorId
-                ];
-            }
-        );
-    }
-
-
-    // =========================================================
-    // AGREGAR LÍNEA AL PEDIDO
-    // =========================================================
-
-    function agregarLinea() {
-
-        if (!productoConfigurando) {
-            return;
-        }
-
-
-        const modificadores =
-            modificadoresDisponibles.filter(
-                (modificador) =>
-                    modificadoresSeleccionados.includes(
-                        modificador.id
-                    )
-            );
-
-
-        const nuevaLinea: LineaPedido = {
-
-            idTemporal:
-                `${Date.now()}-${Math.random()}`,
-
-            producto:
-                productoConfigurando,
-
-            cantidad:
-                cantidadConfigurando,
-
-            modificadores
-        };
-
-
-        setLineas(
-            (actuales) => [
-                ...actuales,
-                nuevaLinea
-            ]
-        );
-
-
-        setProductoConfigurando(null);
-
-        setModificadoresDisponibles([]);
-
-        setModificadoresSeleccionados([]);
-
-        setCantidadConfigurando(1);
-    }
-
-
-    // =========================================================
-    // MODIFICAR CARRITO
-    // =========================================================
-
-    function eliminarLinea(
-        idTemporal: string
-    ) {
-
-        setLineas(
-            (actuales) =>
-                actuales.filter(
-                    (linea) =>
-                        linea.idTemporal !==
-                        idTemporal
-                )
-        );
-    }
-
-
-    // =========================================================
-    // TOTAL ESTIMADO
-    // =========================================================
+    // ==========================================
+    // TOTAL LOCAL DE REFERENCIA
+    // ==========================================
 
     const total = useMemo(() => {
 
-        return lineas.reduce(
-            (acumulado, linea) => {
+        return productos.reduce(
+            (acumulado, producto) => {
 
-                const precioProducto =
-                    Number(
-                        linea.producto.precio
-                    );
-
-
-                const precioModificadores =
-                    linea.modificadores.reduce(
-                        (
-                            totalModificadores,
-                            modificador
-                        ) => {
-
-                            return (
-                                totalModificadores +
-                                Number(
-                                    modificador.precio_extra
-                                )
-                            );
-                        },
-                        0
-                    );
-
+                const cantidad =
+                    seleccion[producto.id] || 0;
 
                 return (
                     acumulado +
-                    linea.cantidad *
-                    (
-                        precioProducto +
-                        precioModificadores
-                    )
+                    cantidad *
+                    Number(producto.precio)
                 );
             },
             0
         );
 
-    }, [lineas]);
+    }, [
+        productos,
+        seleccion
+    ]);
 
 
-    // =========================================================
+    // ==========================================
     // ENVIAR ORDEN
-    // =========================================================
+    // ==========================================
 
     async function enviarPedido() {
 
-        if (
-            !token ||
-            !cuentaId
-        ) {
+        if (!token || !cuentaId) {
             return;
         }
 
 
-        if (lineas.length === 0) {
+        const items: SeleccionProducto[] =
+            productos
+                .filter(
+                    (producto) =>
+                        (seleccion[producto.id] || 0) > 0
+                )
+                .map((producto) => ({
+                    producto,
+                    cantidad:
+                        seleccion[producto.id]
+                }));
+
+
+        if (items.length === 0) {
 
             setMensaje(
-                "Agrega al menos un producto."
+                "Selecciona al menos un producto."
             );
 
             return;
@@ -451,7 +265,6 @@ export default function NuevoPedidoScreen() {
         try {
 
             setEnviando(true);
-
             setMensaje("");
 
 
@@ -461,7 +274,6 @@ export default function NuevoPedidoScreen() {
                     method: "POST",
 
                     headers: {
-
                         "Content-Type":
                             "application/json",
 
@@ -470,35 +282,24 @@ export default function NuevoPedidoScreen() {
                     },
 
                     body: JSON.stringify({
-
                         cuenta_id:
                             Number(cuentaId),
 
                         tipo_entrega:
-                            tipoCuenta ===
-                            "PARA_LLEVAR"
+                            tipoCuenta === "PARA_LLEVAR"
                                 ? "PARA_LLEVAR"
                                 : "EN_MESA",
 
                         items:
-                            lineas.map(
-                                (linea) => ({
+                            items.map((item) => ({
+                                producto_id:
+                                    item.producto.id,
 
-                                    producto_id:
-                                        linea.producto.id,
+                                cantidad:
+                                    item.cantidad,
 
-                                    cantidad:
-                                        linea.cantidad,
-
-                                    modificadores:
-                                        linea.modificadores.map(
-                                            (
-                                                modificador
-                                            ) =>
-                                                modificador.id
-                                        )
-                                })
-                            )
+                                modificadores: []
+                            }))
                     })
                 }
             );
@@ -520,9 +321,7 @@ export default function NuevoPedidoScreen() {
 
 
             router.replace({
-
-                pathname:
-                    "/cuenta/[id]",
+                pathname: "/cuenta/[id]",
 
                 params: {
                     id: cuentaId
@@ -545,10 +344,6 @@ export default function NuevoPedidoScreen() {
     }
 
 
-    // =========================================================
-    // VALIDACIÓN
-    // =========================================================
-
     if (
         !usuario ||
         !token ||
@@ -557,10 +352,6 @@ export default function NuevoPedidoScreen() {
         return null;
     }
 
-
-    // =========================================================
-    // INTERFAZ
-    // =========================================================
 
     return (
 
@@ -573,16 +364,10 @@ export default function NuevoPedidoScreen() {
             >
 
                 <Pressable
-                    onPress={() =>
-                        router.back()
-                    }
+                    onPress={() => router.back()}
                     style={styles.volver}
                 >
-                    <Text
-                        style={
-                            styles.volverTexto
-                        }
-                    >
+                    <Text style={styles.volverTexto}>
                         ← Volver
                     </Text>
                 </Pressable>
@@ -601,207 +386,91 @@ export default function NuevoPedidoScreen() {
 
                     <ActivityIndicator
                         size="large"
-                        style={
-                            styles.cargando
-                        }
+                        style={styles.cargando}
                     />
 
                 ) : (
 
-                    <View
-                        style={
-                            styles.lista
-                        }
-                    >
+                    <View style={styles.lista}>
 
-                        {productos.map(
-                            (producto) => (
+                        {productos.map((producto) => {
 
-                                <Pressable
-                                    key={
-                                        producto.id
-                                    }
+                            const cantidad =
+                                seleccion[
+                                    producto.id
+                                ] || 0;
 
-                                    style={
-                                        styles.producto
-                                    }
+                            return (
 
-                                    onPress={() =>
-                                        seleccionarProducto(
-                                            producto
-                                        )
-                                    }
+                                <View
+                                    key={producto.id}
+                                    style={styles.producto}
                                 >
 
-                                    <View>
+                                    <View style={styles.productoInfo}>
 
-                                        <Text
-                                            style={
-                                                styles.productoNombre
-                                            }
-                                        >
-                                            {
-                                                producto.nombre
-                                            }
+                                        <Text style={styles.productoNombre}>
+                                            {producto.nombre}
                                         </Text>
 
-                                        <Text
-                                            style={
-                                                styles.productoPrecio
-                                            }
-                                        >
-                                            ${
-                                                producto.precio
-                                            }
+                                        <Text style={styles.productoPrecio}>
+                                            ${producto.precio}
                                         </Text>
 
                                     </View>
 
 
-                                    <Text
-                                        style={
-                                            styles.agregarTexto
-                                        }
-                                    >
-                                        Agregar
-                                    </Text>
+                                    <View style={styles.controles}>
 
-                                </Pressable>
-                            )
-                        )}
-
-                    </View>
-                )}
-
-
-                <Text
-                    style={
-                        styles.seccionTitulo
-                    }
-                >
-                    Pedido actual
-                </Text>
-
-
-                {lineas.length === 0 ? (
-
-                    <View style={styles.vacio}>
-
-                        <Text
-                            style={
-                                styles.vacioTexto
-                            }
-                        >
-                            No has agregado productos.
-                        </Text>
-
-                    </View>
-
-                ) : (
-
-                    lineas.map(
-                        (linea) => (
-
-                            <View
-                                key={
-                                    linea.idTemporal
-                                }
-
-                                style={
-                                    styles.linea
-                                }
-                            >
-
-                                <View
-                                    style={
-                                        styles.lineaInfo
-                                    }
-                                >
-
-                                    <Text
-                                        style={
-                                            styles.lineaNombre
-                                        }
-                                    >
-                                        {
-                                            linea.cantidad
-                                        } × {
-                                            linea.producto
-                                                .nombre
-                                        }
-                                    </Text>
-
-
-                                    {linea.modificadores.map(
-                                        (
-                                            modificador
-                                        ) => (
-
-                                            <Text
-                                                key={
-                                                    modificador.id
-                                                }
-
-                                                style={
-                                                    styles.modificadorResumen
-                                                }
-                                            >
-                                                • {
-                                                    modificador.nombre
-                                                }
+                                        <Pressable
+                                            style={styles.botonCantidad}
+                                            onPress={() =>
+                                                disminuir(
+                                                    producto.id
+                                                )
+                                            }
+                                        >
+                                            <Text style={styles.botonCantidadTexto}>
+                                                −
                                             </Text>
+                                        </Pressable>
 
-                                        )
-                                    )}
+
+                                        <Text style={styles.cantidad}>
+                                            {cantidad}
+                                        </Text>
+
+
+                                        <Pressable
+                                            style={styles.botonCantidad}
+                                            onPress={() =>
+                                                aumentar(
+                                                    producto.id
+                                                )
+                                            }
+                                        >
+                                            <Text style={styles.botonCantidadTexto}>
+                                                +
+                                            </Text>
+                                        </Pressable>
+
+                                    </View>
 
                                 </View>
+                            );
+                        })}
 
-
-                                <Pressable
-                                    style={
-                                        styles.botonEliminar
-                                    }
-
-                                    onPress={() =>
-                                        eliminarLinea(
-                                            linea.idTemporal
-                                        )
-                                    }
-                                >
-                                    <Text
-                                        style={
-                                            styles.botonEliminarTexto
-                                        }
-                                    >
-                                        ×
-                                    </Text>
-                                </Pressable>
-
-                            </View>
-
-                        ))
+                    </View>
                 )}
 
 
-                <View
-                    style={
-                        styles.resumen
-                    }
-                >
+                <View style={styles.resumen}>
 
-                    <Text
-                        style={
-                            styles.totalEtiqueta
-                        }
-                    >
+                    <Text style={styles.totalEtiqueta}>
                         Total estimado
                     </Text>
 
-                    <Text
-                        style={
-                            styles.total
-                        }
-                    >
+                    <Text style={styles.total}>
                         ${total.toFixed(2)}
                     </Text>
 
@@ -815,14 +484,8 @@ export default function NuevoPedidoScreen() {
                         enviando &&
                         styles.botonDeshabilitado
                     ]}
-
-                    disabled={
-                        enviando
-                    }
-
-                    onPress={
-                        enviarPedido
-                    }
+                    disabled={enviando}
+                    onPress={enviarPedido}
                 >
 
                     {enviando ? (
@@ -831,11 +494,7 @@ export default function NuevoPedidoScreen() {
 
                     ) : (
 
-                        <Text
-                            style={
-                                styles.botonEnviarTexto
-                            }
-                        >
+                        <Text style={styles.botonEnviarTexto}>
                             Enviar a cocina
                         </Text>
 
@@ -846,294 +505,13 @@ export default function NuevoPedidoScreen() {
 
                 {mensaje.length > 0 && (
 
-                    <Text
-                        style={
-                            styles.mensaje
-                        }
-                    >
+                    <Text style={styles.mensaje}>
                         {mensaje}
                     </Text>
 
                 )}
 
             </ScrollView>
-
-
-            {/* =====================================
-                MODAL DE CONFIGURACIÓN
-            ====================================== */}
-
-            <Modal
-                visible={
-                    productoConfigurando !== null
-                }
-
-                transparent
-
-                animationType="fade"
-
-                onRequestClose={() =>
-                    setProductoConfigurando(
-                        null
-                    )
-                }
-            >
-
-                <View
-                    style={
-                        styles.modalFondo
-                    }
-                >
-
-                    <View
-                        style={
-                            styles.modalCard
-                        }
-                    >
-
-                        {productoConfigurando && (
-
-                            <>
-
-                                <Text
-                                    style={
-                                        styles.modalTitulo
-                                    }
-                                >
-                                    {
-                                        productoConfigurando
-                                            .nombre
-                                    }
-                                </Text>
-
-
-                                <Text
-                                    style={
-                                        styles.modalPrecio
-                                    }
-                                >
-                                    ${
-                                        productoConfigurando
-                                            .precio
-                                    }
-                                </Text>
-
-
-                                <Text
-                                    style={
-                                        styles.modalEtiqueta
-                                    }
-                                >
-                                    Cantidad
-                                </Text>
-
-
-                                <View
-                                    style={
-                                        styles.controlesCantidad
-                                    }
-                                >
-
-                                    <Pressable
-                                        style={
-                                            styles.botonCantidad
-                                        }
-
-                                        onPress={() =>
-                                            setCantidadConfigurando(
-                                                (
-                                                    cantidad
-                                                ) =>
-                                                    Math.max(
-                                                        1,
-                                                        cantidad -
-                                                            1
-                                                    )
-                                            )
-                                        }
-                                    >
-                                        <Text
-                                            style={
-                                                styles.botonCantidadTexto
-                                            }
-                                        >
-                                            −
-                                        </Text>
-                                    </Pressable>
-
-
-                                    <Text
-                                        style={
-                                            styles.cantidad
-                                        }
-                                    >
-                                        {
-                                            cantidadConfigurando
-                                        }
-                                    </Text>
-
-
-                                    <Pressable
-                                        style={
-                                            styles.botonCantidad
-                                        }
-
-                                        onPress={() =>
-                                            setCantidadConfigurando(
-                                                (
-                                                    cantidad
-                                                ) =>
-                                                    cantidad +
-                                                    1
-                                            )
-                                        }
-                                    >
-                                        <Text
-                                            style={
-                                                styles.botonCantidadTexto
-                                            }
-                                        >
-                                            +
-                                        </Text>
-                                    </Pressable>
-
-                                </View>
-
-
-                                <Text
-                                    style={
-                                        styles.modalEtiqueta
-                                    }
-                                >
-                                    Modificadores
-                                </Text>
-
-
-                                {cargandoModificadores ? (
-
-                                    <ActivityIndicator />
-
-                                ) : modificadoresDisponibles.length ===
-                                  0 ? (
-
-                                    <Text
-                                        style={
-                                            styles.sinModificadores
-                                        }
-                                    >
-                                        Este producto no tiene modificadores.
-                                    </Text>
-
-                                ) : (
-
-                                    <View
-                                        style={
-                                            styles.modificadores
-                                        }
-                                    >
-
-                                        {modificadoresDisponibles.map(
-                                            (
-                                                modificador
-                                            ) => {
-
-                                                const seleccionado =
-                                                    modificadoresSeleccionados.includes(
-                                                        modificador.id
-                                                    );
-
-
-                                                return (
-
-                                                    <Pressable
-                                                        key={
-                                                            modificador.id
-                                                        }
-
-                                                        style={[
-                                                            styles.modificadorBoton,
-
-                                                            seleccionado &&
-                                                            styles.modificadorSeleccionado
-                                                        ]}
-
-                                                        onPress={() =>
-                                                            alternarModificador(
-                                                                modificador.id
-                                                            )
-                                                        }
-                                                    >
-
-                                                        <Text
-                                                            style={[
-                                                                styles.modificadorTexto,
-
-                                                                seleccionado &&
-                                                                styles.modificadorTextoSeleccionado
-                                                            ]}
-                                                        >
-                                                            {
-                                                                modificador.nombre
-                                                            }
-                                                        </Text>
-
-                                                    </Pressable>
-                                                );
-                                            }
-                                        )}
-
-                                    </View>
-                                )}
-
-
-                                <Pressable
-                                    style={
-                                        styles.botonAgregar
-                                    }
-
-                                    onPress={
-                                        agregarLinea
-                                    }
-                                >
-                                    <Text
-                                        style={
-                                            styles.botonAgregarTexto
-                                        }
-                                    >
-                                        Agregar al pedido
-                                    </Text>
-                                </Pressable>
-
-
-                                <Pressable
-                                    style={
-                                        styles.botonCancelar
-                                    }
-
-                                    onPress={() =>
-                                        setProductoConfigurando(
-                                            null
-                                        )
-                                    }
-                                >
-                                    <Text
-                                        style={
-                                            styles.botonCancelarTexto
-                                        }
-                                    >
-                                        Cancelar
-                                    </Text>
-                                </Pressable>
-
-                            </>
-
-                        )}
-
-                    </View>
-
-                </View>
-
-            </Modal>
 
         </SafeAreaView>
     );
@@ -1151,8 +529,7 @@ const styles = StyleSheet.create({
         width: "100%",
         maxWidth: 500,
         alignSelf: "center",
-        padding: 24,
-        paddingBottom: 50
+        padding: 24
     },
 
     volver: {
@@ -1194,6 +571,11 @@ const styles = StyleSheet.create({
         justifyContent: "space-between"
     },
 
+    productoInfo: {
+        flex: 1,
+        marginRight: 12
+    },
+
     productoNombre: {
         color: "#FFFFFF",
         fontSize: 16,
@@ -1205,67 +587,32 @@ const styles = StyleSheet.create({
         marginTop: 4
     },
 
-    agregarTexto: {
-        color: "#FFFFFF",
-        fontWeight: "700"
-    },
-
-    seccionTitulo: {
-        color: "#FFFFFF",
-        fontSize: 20,
-        fontWeight: "700",
-        marginTop: 28,
-        marginBottom: 14
-    },
-
-    vacio: {
-        backgroundColor: "#1E1E1E",
-        borderRadius: 16,
-        padding: 20
-    },
-
-    vacioTexto: {
-        color: "#AAAAAA",
-        textAlign: "center"
-    },
-
-    linea: {
-        backgroundColor: "#1E1E1E",
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 12,
+    controles: {
         flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center"
+        alignItems: "center",
+        gap: 12
     },
 
-    lineaInfo: {
-        flex: 1
-    },
-
-    lineaNombre: {
-        color: "#FFFFFF",
-        fontWeight: "700"
-    },
-
-    modificadorResumen: {
-        color: "#AAAAAA",
-        marginTop: 4
-    },
-
-    botonEliminar: {
+    botonCantidad: {
         width: 36,
         height: 36,
         borderRadius: 10,
-        backgroundColor: "#3A1D1D",
-        justifyContent: "center",
-        alignItems: "center"
+        backgroundColor: "#333333",
+        alignItems: "center",
+        justifyContent: "center"
     },
 
-    botonEliminarTexto: {
-        color: "#FF8A8A",
+    botonCantidadTexto: {
+        color: "#FFFFFF",
         fontSize: 22,
         fontWeight: "700"
+    },
+
+    cantidad: {
+        color: "#FFFFFF",
+        fontSize: 18,
+        minWidth: 20,
+        textAlign: "center"
     },
 
     resumen: {
@@ -1308,120 +655,5 @@ const styles = StyleSheet.create({
         color: "#FFFFFF",
         textAlign: "center",
         marginTop: 20
-    },
-
-    modalFondo: {
-        flex: 1,
-        backgroundColor:
-            "rgba(0,0,0,0.75)",
-        justifyContent: "center",
-        padding: 24
-    },
-
-    modalCard: {
-        width: "100%",
-        maxWidth: 450,
-        alignSelf: "center",
-        backgroundColor: "#1E1E1E",
-        borderRadius: 20,
-        padding: 24
-    },
-
-    modalTitulo: {
-        color: "#FFFFFF",
-        fontSize: 24,
-        fontWeight: "700"
-    },
-
-    modalPrecio: {
-        color: "#AAAAAA",
-        marginTop: 5
-    },
-
-    modalEtiqueta: {
-        color: "#FFFFFF",
-        fontWeight: "700",
-        marginTop: 22,
-        marginBottom: 10
-    },
-
-    controlesCantidad: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 16
-    },
-
-    botonCantidad: {
-        width: 42,
-        height: 42,
-        borderRadius: 10,
-        backgroundColor: "#333333",
-        justifyContent: "center",
-        alignItems: "center"
-    },
-
-    botonCantidadTexto: {
-        color: "#FFFFFF",
-        fontSize: 22,
-        fontWeight: "700"
-    },
-
-    cantidad: {
-        color: "#FFFFFF",
-        fontSize: 20,
-        fontWeight: "700"
-    },
-
-    modificadores: {
-        gap: 10
-    },
-
-    modificadorBoton: {
-        backgroundColor: "#2A2A2A",
-        borderWidth: 2,
-        borderColor: "transparent",
-        borderRadius: 12,
-        padding: 13
-    },
-
-    modificadorSeleccionado: {
-        borderColor: "#FFFFFF"
-    },
-
-    modificadorTexto: {
-        color: "#CCCCCC"
-    },
-
-    modificadorTextoSeleccionado: {
-        color: "#FFFFFF",
-        fontWeight: "700"
-    },
-
-    sinModificadores: {
-        color: "#888888"
-    },
-
-    botonAgregar: {
-        backgroundColor: "#FFFFFF",
-        borderRadius: 12,
-        padding: 15,
-        alignItems: "center",
-        marginTop: 24
-    },
-
-    botonAgregarTexto: {
-        color: "#111111",
-        fontWeight: "700"
-    },
-
-    botonCancelar: {
-        padding: 14,
-        alignItems: "center",
-        marginTop: 8
-    },
-
-    botonCancelarTexto: {
-        color: "#AAAAAA",
-        fontWeight: "600"
     }
 });
