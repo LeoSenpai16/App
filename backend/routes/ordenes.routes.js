@@ -610,7 +610,156 @@ router.get( "/cocina",verificarToken, permitirRoles("chef"), async (req, res) =>
 });
 
 
-// Cambiar estado
+// Obtener órdenes activas del mesero autenticado
+router.get(
+    "/mias",
+    verificarToken,
+    permitirRoles("mesero"),
+    async (req, res) => {
+
+        const meseroId = req.usuario.id;
+
+        try {
+            const resultado = await pool.query(
+                `
+                SELECT
+                    o.id AS orden_id,
+                    o.estado,
+                    o.tipo_entrega,
+                    o.fecha_creacion,
+                    o.fecha_listo,
+
+                    c.id AS cuenta_id,
+                    c.tipo AS tipo_cuenta,
+                    c.nombre_cliente,
+                    c.estado AS estado_cuenta,
+
+                    m.numero AS mesa,
+
+                    oi.id AS item_id,
+                    oi.cantidad,
+                    oi.precio_unitario,
+                    oi.nota_especial,
+
+                    p.id AS producto_id,
+                    p.nombre AS producto,
+
+                    COALESCE(
+                        (
+                            SELECT json_agg(
+                                json_build_object(
+                                    'id', mod.id,
+                                    'nombre', mod.nombre,
+                                    'precio_extra', oim.precio_extra
+                                )
+                                ORDER BY mod.id
+                            )
+
+                            FROM orden_item_modificadores oim
+
+                            JOIN modificadores mod
+                                ON oim.modificador_id = mod.id
+
+                            WHERE oim.orden_item_id = oi.id
+                        ),
+                        '[]'::json
+                    ) AS modificadores
+
+                FROM ordenes o
+
+                JOIN cuentas c
+                    ON o.cuenta_id = c.id
+
+                LEFT JOIN mesas m
+                    ON c.mesa_id = m.id
+
+                JOIN orden_items oi
+                    ON o.id = oi.orden_id
+
+                JOIN productos p
+                    ON oi.producto_id = p.id
+
+                WHERE c.mesero_id = $1
+
+                AND c.estado IN (
+                    'ABIERTA',
+                    'PENDIENTE_PAGO'
+                )
+
+                AND o.estado <> 'CANCELADO'
+
+                ORDER BY
+                    o.fecha_creacion DESC,
+                    oi.id ASC
+                `,
+                [meseroId]
+            );
+
+            const ordenesMap = new Map();
+
+            for (const fila of resultado.rows) {
+
+                if (!ordenesMap.has(fila.orden_id)) {
+                    ordenesMap.set(
+                        fila.orden_id,
+                        {
+                            id: fila.orden_id,
+                            cuenta_id: fila.cuenta_id,
+                            estado: fila.estado,
+                            tipo_entrega: fila.tipo_entrega,
+                            fecha_creacion: fila.fecha_creacion,
+                            fecha_listo: fila.fecha_listo,
+
+                            cuenta: {
+                                tipo: fila.tipo_cuenta,
+                                estado: fila.estado_cuenta,
+                                mesa: fila.mesa,
+                                nombre_cliente:
+                                    fila.nombre_cliente
+                            },
+
+                            items: []
+                        }
+                    );
+                }
+
+                ordenesMap
+                    .get(fila.orden_id)
+                    .items
+                    .push({
+                        id: fila.item_id,
+                        producto_id: fila.producto_id,
+                        producto: fila.producto,
+                        cantidad: fila.cantidad,
+                        precio_unitario:
+                            fila.precio_unitario,
+                        nota_especial:
+                            fila.nota_especial,
+                        modificadores:
+                            fila.modificadores
+                    });
+            }
+
+            const ordenes = Array.from(
+                ordenesMap.values()
+            );
+
+            res.json(ordenes);
+
+        } catch (error) {
+            console.error(
+                "Error al obtener órdenes del mesero:",
+                error
+            );
+
+            res.status(500).json({
+                mensaje:
+                    "Error interno del servidor"
+            });
+        }
+    }
+);
+
 // Cambiar estado de una orden
 router.patch(
     "/:id/estado",
