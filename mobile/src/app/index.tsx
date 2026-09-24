@@ -8,37 +8,37 @@ import {
     View
 } from "react-native";
 
-import { useRouter } from "expo-router";
-
 import { useEffect, useState } from "react";
 
+import { useRouter } from "expo-router";
+
+import {
+    useAuth,
+    type Usuario
+} from "../context/AuthContext";
 
 const API_URL = "http://localhost:3000";
 
 
-type Usuario = {
-    id: number;
-    nombre: string;
-    rol: "chef" | "mesero";
-};
-
-
 export default function HomeScreen() {
   const router = useRouter();
+  const {
+    guardarSesion
+  } = useAuth();
 
-    const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
 
-    const [usuarioSeleccionado, setUsuarioSeleccionado] =
-        useState<Usuario | null>(null);
+  const [usuarioSeleccionado, setUsuarioSeleccionado] =
+      useState<Usuario | null>(null);
 
-    const [pin, setPin] = useState("");
+  const [pin, setPin] = useState("");
 
-    const [cargando, setCargando] = useState(true);
+  const [cargando, setCargando] = useState(true);
 
-    const [iniciandoSesion, setIniciandoSesion] =
-        useState(false);
+  const [iniciandoSesion, setIniciandoSesion] =
+      useState(false);
 
-    const [mensaje, setMensaje] = useState("");
+  const [mensaje, setMensaje] = useState("");
 
 
     // ==========================================
@@ -62,7 +62,8 @@ export default function HomeScreen() {
                         "No fue posible cargar los usuarios"
                     );
                 }
-
+                
+                
                 const datos: Usuario[] =
                     await respuesta.json();
 
@@ -140,32 +141,42 @@ export default function HomeScreen() {
             );
 
 
-            const datos = await respuesta.json();
 
 
-            if (!respuesta.ok) {
+const datos = await respuesta.json();
 
-                setMensaje(
-                    datos.mensaje ||
-                    "No fue posible iniciar sesión."
-                );
+if (!respuesta.ok) {
 
-                return;
-            }
+    setMensaje(
+        datos.mensaje ||
+        "No fue posible iniciar sesión."
+    );
 
-  if (datos.usuario.rol === "chef") {
-      router.replace("/chef");
-      return;
-  }
+    return;
+}
 
-  if (datos.usuario.rol === "mesero") {
-      router.replace("/mesero");
-      return;
-  }
 
-  setMensaje(
-      "El usuario no tiene un rol válido."
-  );
+guardarSesion(
+    datos.token,
+    datos.usuario
+);
+
+
+if (datos.usuario.rol === "chef") {
+    router.replace("/chef");
+    return;
+}
+
+
+if (datos.usuario.rol === "mesero") {
+    router.replace("/mesero");
+    return;
+}
+
+
+setMensaje(
+    "El usuario no tiene un rol válido."
+);
 
 
         } catch (error) {
