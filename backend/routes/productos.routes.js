@@ -1,10 +1,15 @@
 const express = require("express");
 const pool = require("../db");
 
+const {
+    verificarToken,
+    permitirRoles
+} = require("../middleware/auth.middleware");
+
 const router = express.Router();
 
 // Obtener productos activos
-router.get("/", async (req, res) => {
+router.get( "/", verificarToken, permitirRoles("mesero", "chef"), async (req, res) => {
     try {
         const resultado = await pool.query(`
             SELECT
@@ -32,7 +37,7 @@ router.get("/", async (req, res) => {
 });
 
 // Obtener modificadores disponibles de un producto
-router.get("/:id/modificadores", async (req, res) => {
+router.get( "/:id/modificadores", verificarToken, permitirRoles("mesero", "chef"), async (req, res) => {
     const productoId = Number(req.params.id);
 
     if (

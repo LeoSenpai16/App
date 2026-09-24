@@ -1,10 +1,15 @@
 const express = require("express");
 const pool = require("../db");
 
+const {
+    verificarToken,
+    permitirRoles
+} = require("../middleware/auth.middleware");
+
 const router = express.Router();
 
 // Obtener mesas
-router.get("/", async (req, res) => {
+router.get( "/", verificarToken, permitirRoles("mesero", "chef"), async (req, res) => {
     try {
         const resultado = await pool.query(`
             SELECT

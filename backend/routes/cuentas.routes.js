@@ -10,7 +10,7 @@ const router = express.Router();
 
 
 // Obtener cuentas abiertas
-router.get("/abiertas", async (req, res) => {
+router.get( "/abiertas", verificarToken, permitirRoles("mesero", "chef"), async (req, res) => {
     try {
         const resultado = await pool.query(`
             SELECT
